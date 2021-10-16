@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from cherrypicker import CherryPicker
 
-url1 = 'https://api.crunchbase.com/api/v4/searches/organizations?user_key=a647e3be322e41a11efecdbac28b9e57'
+url1 = 'https://api.crunchbase.com/api/v4/searches/organizations?user_key=___'
 myobj1 = {
   "field_ids": [
     "description",
