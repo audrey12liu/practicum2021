@@ -1,0 +1,75 @@
+import requests
+import json
+import pandas as pd
+import numpy as np
+from cherrypicker import CherryPicker
+
+url1 = 'https://api.crunchbase.com/api/v4/searches/organizations?user_key=(user key)'
+myobj1 = {
+  "field_ids": [
+    "description",
+    "founded_on",
+    "founder_identifiers",
+    "identifier",
+    "investor_identifiers",
+    "num_investors",
+    "num_exits",
+    "num_funding_rounds",
+    "funding_stage",
+    "last_equity_funding_type",
+    "valuation",
+    "revenue_range",
+    "status",
+    "categories",
+    "category_groups"
+  ],
+  "order": [
+    {
+      "field_id": "rank_org",
+      "sort": "asc"
+    }
+  ],
+  "query": [
+    {
+      "type": "predicate",
+      "field_id": "categories", #before this was "categories"
+      "operator_id": "includes",
+      "values": [
+
+        #"machine-learning",
+        #"semiconductor"
+        "Manufacturing",
+        "Science and Engineering",
+        "Hardware",
+        "Information Technology",
+        "Sustainability",
+        "Consumer Electronics",
+        "Data and Analytics",
+        "Software",
+        "Administrative Services",
+        "Internet Services",
+        "Privacy and Security",
+        "Messaging and Telecommunications",
+        "Artificial Intelligence"
+      ]
+    }
+
+
+  ],
+  "card_ids": [
+    "raised_funding_rounds"
+  ],
+  "limit": 900 
+}
+
+x = requests.post(url1, json = myobj1)
+with open('practicum.json', 'w', encoding='utf-8') as f:
+    json.dump(x.json(), f, ensure_ascii=False, indent=4)
+
+with open('practicum.json') as file:
+    data = json.load(file)
+
+picker = CherryPicker(data)
+flat = picker['entities'].flatten().get()
+output = pd.DataFrame(flat)
+
