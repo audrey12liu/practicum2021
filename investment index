@@ -1,0 +1,47 @@
+def funding_score(x):
+    if x == 'seed' or x =='angel':
+        return 10
+    elif x == 'series_a':
+        return 8
+    elif x == 'series_b':
+        return 5
+    elif x == 'series_c':
+        return 1
+    else:
+        return 0
+df['funding_score']=df['funding_type'].apply(funding_score)
+
+def num_investor_score(x):
+    if x < 5:
+        return 10
+    elif 5<=x<=10:
+        return 5
+    else:
+        return 1
+df['num_investor_score']=df['num_investors'].apply(num_investor_score)
+
+premierlist=['Accel','Andreessen Horowitz','Bessemer Venture_Partners','Khosla Ventures','Kleiner Perkins',\
+             'New Enterprise Associates','Sequoia Capital','Tiger Global Management',\
+             'Benchmark','First Round Capital','Founders Fund','General Catalyst','Index Ventures',\
+             'Norwest Venture Partners','Intel Capital',\
+             'Applied Ventures','SK Hynix Ventures','Micron Ventures','Samsung Ventures']
+df['premier1']=df.investor1.isin(premierlist)
+df['premier2']=df.investor2.isin(premierlist)
+df['premier3']=df.investor3.isin(premierlist)
+df['premier4']=df.investor4.isin(premierlist)
+df['premier5']=df.investor5.isin(premierlist)
+df[['premier1','premier2','premier3','premier4','premier5']] *=1
+df['premier_counts']=df['premier1']+df['premier2']+df['premier3']+df['premier4']+df['premier5']
+def premier_score(x):
+    if 4<=x:
+        return 10
+    elif 2<=x<=3:
+        return 8
+    elif x==1:
+        return 5
+    elif x==0:
+        return 1
+df['premier_score']=df['premier_counts'].apply(premier_score)
+
+df['invest_index'] = df['funding_score']+df['num_investor_score']+df['premier_score']
+df.drop(columns=['premier1', 'premier2','premier3','premier4','premier5','premier_counts'], inplace=True)
