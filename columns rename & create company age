@@ -1,0 +1,31 @@
+
+##data cleaning##
+data= output.copy()
+df = data[['properties_founded_on_value','properties_identifier_value','properties_identifier_uuid','properties_status',
+           'properties_num_funding_rounds','properties_num_investors','properties_funding_stage',
+           'properties_last_equity_funding_type','properties_valuation_value',
+           'properties_investor_identifiers_0_value','properties_investor_identifiers_1_value',
+           'properties_investor_identifiers_2_value','properties_investor_identifiers_3_value',
+           'properties_investor_identifiers_4_value',
+           'properties_location_identifiers_2_value','properties_location_identifiers_3_value']]
+
+df=df.rename(columns={'properties_founded_on_value':'founded_on', 'properties_identifier_value':'company_name',
+                   'properties_identifier_uuid':'uuid','properties_status':'status',
+                   'properties_funding_stage':'funding_stage','properties_valuation_value':'valuation',
+                   'properties_investor_identifiers_0_value':'investor1',
+                   'properties_investor_identifiers_1_value':'investor2',
+                   'properties_investor_identifiers_2_value':'investor3',
+                   'properties_investor_identifiers_3_value':'investor4',
+                   'properties_investor_identifiers_4_value':'investor5',
+                   'properties_num_funding_rounds':'num_funding_rounds', 'properties_num_investors':'num_investors',
+                   'properties_last_equity_funding_type':'funding_type',                 
+                   'properties_location_identifiers_2_value':'country',
+                   'properties_location_identifiers_3_value':'continent'})
+
+from datetime import datetime
+df['founded_on']= pd.to_datetime(df['founded_on'])
+df['today']= pd.to_datetime('today').normalize()
+df['company_age'] = df['today']-df['founded_on']
+df['company_age_years'] = df['company_age'].dt.total_seconds() / (365.25*24*3600)
+df.drop(columns=['founded_on', 'today','company_age'], inplace=True)
+
