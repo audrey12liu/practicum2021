@@ -192,8 +192,7 @@ import json
 For the people information, we will get the people's description and educational degree files.
 
 100 companies with 100 uuids from above
-url1 = 'https://api.crunchbase.com/api/v4/searches/organizations?user_key=a647e3be322e41a11efecdbac28b9e57'
-#url2 = 'https://api.crunchbase.com/api/v4/searches/people?user_key=a647e3be322e41a11efecdbac28b9e57'
+url1 = 'https://api.crunchbase.com/api/v4/searches/organizations?user_key=____ACCESS KEY____'
 
 #myobj = {'somekey': 'somevalue'}
 
@@ -329,7 +328,7 @@ x = requests.post(url1, json = myobj1)
 with open('filtered_organizations_final_test.json', 'w', encoding='utf-8') as f:
     json.dump(x.json(), f, ensure_ascii=False, indent=4)
 People's description:
-url2 = 'https://api.crunchbase.com/api/v4/searches/people?user_key=a647e3be322e41a11efecdbac28b9e57'
+url2 = 'https://api.crunchbase.com/api/v4/searches/people?user_key=____ACCESS KEY____'
 
 filtered_organizations = open("filtered_organizations_final_test.json", encoding="utf-8")
 filtered_organizations_dict = json.load(filtered_organizations)
@@ -382,7 +381,7 @@ with open('people_description_final_test.json', 'w', encoding='utf-8') as f:
 100
 97
 People's educational degree
-url3 =  'https://api.crunchbase.com/api/v4/searches/degrees?user_key=a647e3be322e41a11efecdbac28b9e57'
+url3 =  'https://api.crunchbase.com/api/v4/searches/degrees?user_key=____ACCESS KEY____'
 
 filtered_organizations = open("filtered_organizations_final_test.json", encoding="utf-8")
 filtered_organizations_dict = json.load(filtered_organizations)
