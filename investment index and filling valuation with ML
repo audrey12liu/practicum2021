@@ -45,3 +45,5 @@ df['premier_score']=df['premier_counts'].apply(premier_score)
 
 df['invest_index'] = df['funding_score']+df['num_investor_score']+df['premier_score']
 df.drop(columns=['premier1', 'premier2','premier3','premier4','premier5','premier_counts'], inplace=True)
+
+
