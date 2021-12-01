@@ -46,4 +46,446 @@ df['premier_score']=df['premier_counts'].apply(premier_score)
 df['invest_index'] = df['funding_score']+df['num_investor_score']+df['premier_score']
 df.drop(columns=['premier1', 'premier2','premier3','premier4','premier5','premier_counts'], inplace=True)
 
+## remove duplicate datapoints
+df = df.drop_duplicates(subset=['company_name'], keep='first')
 
+df1 = df.copy()
+
+## Drop companies which are not operating and age > 5
+df1 = df1[df1["company_age_years"] <= 5]
+df1 = df1[df1["status"] != "closed"]
+
+## Location: US, South Korea, Taiwan, China
+df1.astype({"country": "str"})
+df_location_filter = df1[((df1["country"] == "United States") | (df1["country"] == "South Korea") | (df1["country"] == "Taiwan") | (df1["country"] == "China"))]
+df1 = df_location_filter
+
+
+#### FILL missing valuation with KNN
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.compose import make_column_transformer
+from sklearn.pipeline import make_pipeline
+
+ct = make_column_transformer(("passthrough",["num_investor_score", "premier_score", "funding_score", "funding_amount_usd"]), remainder="drop")
+
+missing_val_bool = df1["valuation"].isnull()
+
+
+#df4 for training purpose
+df4 = df1.dropna(axis = 0, subset=["valuation", "num_investor_score", "premier_score", "funding_score", "funding_amount_usd"])
+
+#df5 to make predictions for missing valuations later
+df5 = df1.dropna(axis = 0, subset=["num_investor_score", "premier_score", "funding_score", "funding_amount_usd"])
+
+#this will be merged with df6 as this already has valuations
+df7 = df1.dropna(axis = 0, subset=["valuation"])
+
+missing_val_bool = df5["valuation"].isnull()
+
+df6 = df5[:][missing_val_bool]
+
+n = missing_val_bool[missing_val_bool]
+
+
+X = df4[["num_investor_score", "premier_score", "funding_score", "funding_amount_usd"]]
+y = df4["valuation"]
+
+X = df4
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state = 101)
+
+knn = KNeighborsRegressor(5, weights = "distance")
+
+pipe = make_pipeline(ct, knn)
+
+pipe.fit(X_train, y_train)
+
+
+predictions = pd.DataFrame(pipe.predict(X_test))
+#model_5nn = knn.fit(X_train, y_train)
+
+
+#imputed_valuations = model_5nn.predict(X_test)
+
+from sklearn.metrics import mean_squared_error, r2_score
+print("mean squared error:")
+print(mean_squared_error(y_test,predictions))
+print(sum(abs(y_test - predictions)))
+diffSum = sum(abs(y_test - predictions))
+print(diffSum / len(predictions))
+
+
+#Now find the missing valuations from df6
+missing_val_data = df6[["num_investor_score", "premier_score", "funding_score", "funding_amount_usd"]]
+#predicted_vals = model_5nn.predict(missing_val_data)
+predicted_vals = pipe.predict(df6)
+df6["valuation"] = predicted_vals
+
+final = pd.concat([df7, df6])
+
+
+#### Apply value score after filling missing valuation
+data=final.copy()
+def value_score(x):
+    if 0 <x <= 2000000:
+        return 10
+    elif 2000000<x<=4000000:
+        return 9
+    elif 4000000<x<=60000000:
+        return 8
+    elif 6000000<x<=10000000:
+        return 7
+    elif 10000000<x<=15000000:
+        return 6
+    elif 15000000<x<=30000000:
+        return 4
+    elif 30000000<x<=100000000:
+        return 2
+    elif x>100000000:
+        return 1
+    elif x==0:
+        return 0
+
+data['value_score']= data['valuation'].apply(value_score)
+
+data['invest_index'] = round(data['funding_score']*0.4 + data['num_investor_score']*0.2 + \
+                             data['premier_score']*0.3 + data['value_score']*0.1, 2)
+                             
+valuation = data['valuation']
+data = data.drop(columns=['valuation'])
+data.insert(loc=12, column='valuation', value=valuation)
+value_score = data['value_score']
+data = data.drop(columns=['value_score'])
+data.insert(loc=13, column='value_score', value=value_score)
+invest_index = data['invest_index']
+data = data.drop(columns=['invest_index'])
+data.insert(loc=14, column='invest_index', value=invest_index)
+
+## Select only companies status that are "operating" and funding type no later than "Series C":
+
+status_filter=data[data.status=='operating']
+fund_filter=status_filter[(status_filter.funding_type=='seed') | (status_filter.funding_type=='angel') |\
+              (status_filter.funding_type=='series_a') | (status_filter.funding_type=='series_b') | \
+              (status_filter.funding_type=='series_c')]
+              
+## The output of all filtered companies sorted by invest index.
+fund_filter.sort_values(by=['invest_index'], ascending=False)
+
+top100=fund_filter.sort_values(by=['invest_index'], ascending=False).head(100)
+top100.to_csv('top100_test.csv')
+
+
+#### Extract top 100 companies' uuid to search for people information
+top100=pd.read_csv('top100_test.csv')
+topuuid = top100[['uuid']]
+topuuidlist = topuuid.iloc[:,:].stack().tolist()
+
+textfile = open("top100_uuid_test.txt", "w")
+for x in topuuidlist:
+    textfile.write(x + ", ")
+textfile.close()
+After we get the top 100 companies' uuid list, we can further request their people information.
+
+import requests
+import json
+For the people information, we will get the people's description and educational degree files.
+
+100 companies with 100 uuids from above
+url1 = 'https://api.crunchbase.com/api/v4/searches/organizations?user_key=a647e3be322e41a11efecdbac28b9e57'
+#url2 = 'https://api.crunchbase.com/api/v4/searches/people?user_key=a647e3be322e41a11efecdbac28b9e57'
+
+#myobj = {'somekey': 'somevalue'}
+
+
+text_file = open("top100_uuid_test.txt", "r")
+
+"""
+top_100 = "0bd32dff-1655-4328-831e-251199088c3c, 928e598b-d4ca-4943-8953-8ce02148f5f5, 91482a6a-f078-4744-9e8f-7399399a3c8e, ce2576df-1808-4b2d-af56-6188fc218307, 74496d11-8f61-457c-a07b-6fa18f0c274f, 34f65ba5-09e7-4df6-995c-238f65054f1a, aa0d3b51-8b5f-449e-86a8-4386d1991ecb, b40dff03-9a94-450e-9b06-03d1b0c0f30e, fb1f8846-266b-46c5-8dd2-71880cf4517f, 39d9cca4-c433-4ac6-8355-a7a431d4823c, 5130d6a9-bfe9-4744-9520-06153004a24f, 85c993af-da6d-4a83-87db-1c3619505795, 87ce2a83-3f5f-4930-ad46-cb11abd16c58, 22f47c4c-edfa-46ab-bb8f-b60452799d32, aee553ec-d3ce-491b-b797-08f7b7e31673, 36e3dde9-acf2-4e3d-b18b-b65e290ba724, f7b52743-8cff-43d4-bc8e-17f0a4cbc76e, 09e8e8e4-5630-4e75-98aa-6f1dbecb0f4a, 747e61d8-cad6-4f2f-9d15-e893f013f306, 24bc6a76-9fa1-410b-b9fb-c5181556d045, bf7e6643-8bc2-4f7b-9ca9-09b579566bbf, 9529cf4b-0495-4deb-94ab-6e1552e3c5b6, af2e56b7-fb53-4c3e-a33a-eaf92fc1e75d, 1a65b166-a661-43e8-8827-28823e19449b, aa681475-4ce8-452a-b663-94cd890085f1, 00a7024b-ef86-4194-a830-8f18db82828d, c0c2b03d-30cd-4d4e-a00d-091884e4737c, 7a99332b-2ee1-49a7-b861-9c408172020e, 1a406c2d-041a-41ec-99bf-3384442e969f, ee598657-0ec4-4671-b921-662165a1fbb2, be5b8209-a53b-410d-981c-8abe1959cdea, 1c559209-5b02-4c3b-8e2d-d7580ad8b103, 857db9a8-811c-433f-9ee4-e7b4f0545a43, 24f2432b-0c10-42cc-a8e3-10942a46e221, 3f2d749e-d9dc-4119-8e13-610dd76a0ef1, 0e2c8a01-96eb-403a-a196-12ec78fcd26a, 847b0839-4905-4460-8589-c0fc6edb59fe, 8cf4e343-64bf-4087-90a2-25d780c4a224, 7c86d658-cb32-47ad-b649-3678ad17cbf5, c1305272-4096-4365-9506-5ea4654d2630, 125c6983-5422-4985-8ab9-39912400c5c7, ef255045-0800-4a9a-ade4-0b937e7ef828, 5baae993-f52c-4927-b3ac-eb922d2ed8e3, d0865190-cfc1-4166-a9ce-fbc6e490d7f9, e2ef082d-670a-4164-8367-03e36dbe3536, 04b0ff18-d46b-4307-be74-93b13a2369aa, c712d1b6-f66b-47f3-87d2-585723ab5498, d6195f7b-0111-41c6-ba33-98c4e2765b12, 693ae052-7ce0-47c7-a1ae-26abca9fecf5, 8d664591-eac0-4131-a225-b4e6f729f8aa, 02264334-2acf-41a8-abfb-5754dca849fa, 876da9ac-8520-4c97-997d-6d9056c498f5, 5d33a1e7-33bb-4bc6-91a1-8dd0afb6caa2, d8fd4c74-3bbe-4eea-82bd-828a5e2903be, 404625c6-bf49-4d49-a9a7-9d881be10fd4, d33fb484-4e30-4c04-9c20-7f1c5294a36e, 3529431c-d231-4029-b5b6-7498b23c8bbd, 267c56d2-7aec-43ce-99c5-a19a365da5f0, c7020f5d-4114-4fa7-a999-5e731715ef51, 4239cc7e-a5e2-1638-ef5e-027f968649fe, 8f4b40ca-ca5c-4418-aad7-91921d984b1a, 95ee0980-f06d-4511-9b52-33724461404f, 8354cb92-4226-6345-4b91-021aaeed51e2, 6e341733-d29c-47a5-a0d7-ce0098c50fd7, ca852eb8-4a4d-4652-93d3-e73b73c2aac3, 95c46e3d-1371-4a8c-99f4-0de3a185423f, 91a22e9d-9884-4734-83b4-02e25346da7d, 5c504ae0-18a7-454b-aaa3-414d47787453, 53eebf2d-3fea-41e6-8f3d-e99dbe0246ef, a209bccb-b107-4c6c-b6ff-dfe2dd0c6374, 4b488e93-de87-47c5-8490-3ce5713c2806, b8b7af33-a887-4635-8e36-8e093d9bcaf3, 9c678833-b7e4-41d9-95d8-21b8cd9670e5, 92c31345-a7c1-4513-be68-418516d1c33b, 22df1cd3-8431-47c2-991e-b9ef5f6fb3e5, f60670a2-6baf-4f5a-9602-d89cbc22ab0f, c56b9e88-e707-4e23-86a3-8c0975c0273d, d4c6c13a-1a7d-459d-adae-de26e35c0156, e6f950dd-9cf1-4d6f-b9d7-bbe309647145, 572f2384-f09c-bcdb-48d4-4d8aa4b84adf, d3442d0f-b3b1-49ba-aa59-db6f7e9824e4, fa46400c-7d58-477a-8e9b-f5673fce5adc, 3ebaed62-5638-4495-b3b6-154c451a1ea4, 04a1a8bb-2b43-4d2f-b817-844e5b684276, 39e71024-2e22-4675-a030-d013e9eb448e, 587c435d-3ac2-4ba3-a7ab-dee3f0ac956d, 816fe0a1-5c96-40cb-9662-c3cde0782a0e, 60e2320d-e170-4ec1-9c17-04f3eb34d983, 7d410f4a-a8df-4dcb-99c9-f9f38a0a03a4, 47711c14-6117-4bb3-b9ef-5b076bf21f21, 41d260cd-f79b-496f-b69b-2a01bf03a878, f1e5cab0-68e9-492c-beb5-04d8b10e913b, 3d57e122-acef-46f8-8635-60c2a0772eb8, cd5cc791-29a1-47cd-b694-82bccaf0d7d3, 17de76f6-9280-46ee-8a4f-099faf9c6b0c, c676d0c4-3e03-41e4-8f59-8c1d213de4d9, dc9db011-d94f-4ed3-b7fc-7c76e97d794f, 2e43d5c2-1ff2-4853-ad76-b06e665c6a0b, c05a3dd0-e1f2-4da3-835b-61e6c10afb62, 9f26bda6-0e75-47bd-878b-4fdf96008391"
+"""
+
+top_100 = text_file.read()
+
+text_file.close()
+
+#print(top_100)
+
+top_100 = top_100.replace(" ", "")
+
+top_100_list = top_100.split(",")
+
+top_100_list = top_100_list[:len(top_100_list) - 1]
+#print(top_100_list)
+
+myobj1 = {
+  "field_ids": [
+    "description",
+    "founded_on",
+    "founder_identifiers",
+    "identifier",
+    "investor_identifiers",
+    "num_exits",
+    "num_funding_rounds",
+    "revenue_range",
+    "status",
+    "categories",
+    "category_groups",
+    "valuation",
+    "funding_total",
+    "funds_total",
+    "last_equity_funding_total",
+    "last_funding_total",
+    "num_acquisitions",
+    "num_articles",
+    "num_current_advisor_positions",
+    "num_diversity_spotlight_investments",
+    "num_employees_enum",
+    "num_event_appearances",
+    "num_exits",
+    "num_founder_alumni",
+    "num_founders",
+    "num_funds",
+    "num_investments",
+    "num_investors",
+    "num_lead_investments",
+    "num_lead_investors",
+    "num_sub_organizations",
+    "rank_org",
+    "revenue_range",
+
+
+  ],
+  "order": [
+    {
+      "field_id": "rank_org",
+      "sort": "asc"
+    }
+  ],
+  "query": [
+    {
+      "type": "predicate",
+      "field_id": "categories", #before this was "categories"
+      "operator_id": "includes",
+      "values": [
+
+        #"machine-learning",
+        #"semiconductor"
+        #"Biotechnology",
+        "Manufacturing",
+        "Science and Engineering",
+        "Hardware",
+        "Information Technology",
+        "Sustainability",
+        "Consumer Electronics",
+        "Data and Analytics",
+        "Software",
+        "Administrative Services",
+        "Internet Services",
+        "Privacy and Security",
+        "Messaging and Telecommunications",
+        "Artificial Intelligence"
+      ]
+    },
+
+    {
+        "type": "predicate",
+        "field_id": "uuid", #before this was "categories"
+        "operator_id": "includes",
+        "values": top_100_list
+    },
+
+
+  ],
+  "card_ids": [
+    "raised_funding_rounds"
+  ],
+  "limit": 1000
+}
+
+
+"""
+{
+  "type": "predicate",
+  "field_id": "valuation",
+  "operator_id": "between",
+  "values": [
+    {
+      "value": 0,
+      "currency": "usd"
+    },
+    {
+      "value": 250000000,
+      "currency": "usd"
+    }
+  ]
+}
+"""
+
+
+
+x = requests.post(url1, json = myobj1)
+#y = requests.post(url2, json = myobj2)
+
+with open('filtered_organizations_final_test.json', 'w', encoding='utf-8') as f:
+    json.dump(x.json(), f, ensure_ascii=False, indent=4)
+People's description:
+url2 = 'https://api.crunchbase.com/api/v4/searches/people?user_key=a647e3be322e41a11efecdbac28b9e57'
+
+filtered_organizations = open("filtered_organizations_final_test.json", encoding="utf-8")
+filtered_organizations_dict = json.load(filtered_organizations)
+
+
+print(len(filtered_organizations_dict["entities"]))
+#now collect uuids of Founders
+uuids = []
+for organization in filtered_organizations_dict["entities"]:
+    if "founder_identifiers" in organization["properties"]:
+        for founder in organization["properties"]["founder_identifiers"]:
+            uuids.append(founder["uuid"])
+            break
+
+print(len(uuids))
+
+myobj1 = {
+        "field_ids": [
+        "uuid",
+        "name",
+        "first_name",
+        "last_name",
+        "gender",
+        "description",
+        "short_description",
+        "primary_job_title",
+        "primary_organization",
+        "linkedin"
+
+        ],
+
+        "query": [
+            {
+            "type": "predicate",
+            "field_id": "uuid", #before this was "categories"
+            "operator_id": "includes",
+            "values": uuids
+            },
+
+            ],
+            "limit": 1000
+    }
+
+
+x = requests.post(url2, json = myobj1)
+#y = requests.post(url2, json = myobj2)
+
+with open('people_description_final_test.json', 'w', encoding='utf-8') as f:
+    json.dump(x.json(), f, ensure_ascii=False, indent=4)
+100
+97
+People's educational degree
+url3 =  'https://api.crunchbase.com/api/v4/searches/degrees?user_key=a647e3be322e41a11efecdbac28b9e57'
+
+filtered_organizations = open("filtered_organizations_final_test.json", encoding="utf-8")
+filtered_organizations_dict = json.load(filtered_organizations)
+
+
+print(len(filtered_organizations_dict["entities"]))
+#now collect uuids of Founders
+uuids = []
+for organization in filtered_organizations_dict["entities"]:
+    if "founder_identifiers" in organization["properties"]:
+        for founder in organization["properties"]["founder_identifiers"]:
+            uuids.append(founder["uuid"])
+            break
+
+print(len(uuids))
+
+
+
+
+myobj1 = {
+        "field_ids": [
+        "uuid",
+        "name",
+        "type_name",
+        "person_identifier",
+        ],
+
+        "query": [
+            {
+            "type": "predicate",
+            "field_id": "person_identifier", #before this was "categories"
+            "operator_id": "includes",
+            "values": uuids
+            },
+
+            ],
+            "limit": 1000
+    }
+
+
+x = requests.post(url3, json = myobj1)
+#y = requests.post(url2, json = myobj2)
+
+with open('people_degrees_final_test.json', 'w', encoding='utf-8') as f:
+    json.dump(x.json(), f, ensure_ascii=False, indent=4)
+100
+97
+Save the results as csv files
+# ORGANIZATIONS CSV
+with open('filtered_organizations_final_test.json','r', encoding="utf-8") as f:
+    df = json.loads(f.read())
+
+
+entities = df['entities']
+new_data = []
+for i in range(0, 100):
+    new_obj = {}
+
+    for key in entities[i]["properties"]:
+        if key == "founder_identifiers":
+            new_obj[key] = [entities[i]["properties"][key][0]]
+        else:
+            new_obj[key] = entities[i]["properties"][key]
+        
+    new_obj["org_uuid"] = entities[i]["uuid"]
+    
+    if "founder_identifiers" in entities[i]["properties"]:
+        new_data.append(new_obj)
+    
+print(new_data[0]["founder_identifiers"])
+entities = df['entities']
+#entities = json.dumps(entities)
+#entities = json.load(entities)
+#print(entities[0])
+#print(entities[0]["properties"])
+#print(entities[0]["founder_identifiers"])
+#print(entities[0]['founder_identifiers'])
+#df_nested_list = pd.json_normalize(new_data, errors="ignore", record_path=['founder_identifiers'], meta=["org_uuid", "founded_on", "identifiers", "description", "category_groups", "revenue_range", "num_investors", "num_lead_investores", "status", "funding_total", "categories"])
+org = pd.json_normalize(new_data, errors="ignore", record_path=['founder_identifiers'], meta=["org_uuid", "founded_on", "identifiers", "description", "category_groups", "revenue_range", "num_investors", "num_lead_investores", "status", "funding_total", "categories"])
+#df_nested_list.to_csv("filtered_organizations_final_test.csv", index=False)
+
+# PEOPLE DEGREES CSV
+#df = pd.read_json("people_degrees_final_test.json")
+with open('people_degrees_final_test.json','r', encoding="utf-8") as f:
+    df = json.loads(f.read())
+
+    
+#df_nested_list = pd.json_normalize(df, record_path =['entities'])
+deg = pd.json_normalize(df, record_path =['entities'])
+#df = pd.read_json(list(df.entities))
+#df.to_csv("people_degrees_final_test.csv")
+
+
+
+#df_nested_list.to_csv("people_degrees_final_test.csv", index=False)
+###############
+
+
+# PEOPLE DESCRIPTIONS CSV
+with open('people_description_final_test.json','r', encoding="utf-8") as f:
+    df = json.loads(f.read())
+
+    
+#df_nested_list = pd.json_normalize(df, record_path =['entities'])
+ppl = pd.json_normalize(df, record_path =['entities'])
+#df_nested_list.to_csv("people_description_final_test.csv", index=False)
